@@ -48,3 +48,10 @@ out/
 venv/
 __pycache__/
 backend/src/main/resources/application.yml
+
+# Trae
+.trae/
+
+# Root directory files
+/*.txt
+/*.md

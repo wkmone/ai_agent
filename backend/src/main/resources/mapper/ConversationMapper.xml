@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wk.agent.mapper.ConversationMapper">
+    <resultMap id="conversationResultMap" type="com.wk.agent.entity.Conversation">
+        <id column="id" property="id"/>
+        <result column="title" property="title"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="create" parameterType="com.wk.agent.entity.Conversation" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO conversation (title, created_at, updated_at)
+        VALUES (#{title}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <select id="findById" parameterType="java.lang.Long" resultMap="conversationResultMap">
+        SELECT id, title, created_at, updated_at
+        FROM conversation
+        WHERE id = #{id}
+    </select>
+
+    <select id="findAll" resultMap="conversationResultMap">
+        SELECT id, title, created_at, updated_at
+        FROM conversation
+        ORDER BY created_at DESC
+    </select>
+
+    <update id="update" parameterType="com.wk.agent.entity.Conversation">
+        UPDATE conversation
+        SET title = #{title}, updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete" parameterType="java.lang.Long">
+        DELETE FROM conversation
+        WHERE id = #{id}
+    </delete>
+</mapper>

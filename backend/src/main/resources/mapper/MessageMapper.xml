@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wk.agent.mapper.MessageMapper">
+    <resultMap id="messageResultMap" type="com.wk.agent.entity.Message">
+        <id column="id" property="id"/>
+        <result column="conversation_id" property="conversationId"/>
+        <result column="role" property="role"/>
+        <result column="content" property="content"/>
+        <result column="created_at" property="createdAt"/>
+    </resultMap>
+
+    <insert id="create" parameterType="com.wk.agent.entity.Message" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO message (conversation_id, role, content, created_at)
+        VALUES (#{conversationId}, #{role}, #{content}, #{createdAt})
+    </insert>
+
+    <select id="findById" parameterType="java.lang.Long" resultMap="messageResultMap">
+        SELECT id, conversation_id, role, content, created_at
+        FROM message
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByConversationId" parameterType="java.lang.Long" resultMap="messageResultMap">
+        SELECT id, conversation_id, role, content, created_at
+        FROM message
+        WHERE conversation_id = #{conversationId}
+        ORDER BY created_at ASC
+    </select>
+
+    <update id="update" parameterType="com.wk.agent.entity.Message">
+        UPDATE message
+        SET content = #{content}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete" parameterType="java.lang.Long">
+        DELETE FROM message
+        WHERE id = #{id}
+    </delete>
+</mapper>

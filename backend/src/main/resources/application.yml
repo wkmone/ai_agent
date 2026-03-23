@@ -1,0 +1,177 @@
+spring:
+  application:
+    name: backend
+  # 数据源配置 (MyBatis Plus 使用)
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://localhost:5432/ai_agent
+    username: postgres
+    password: 123456
+    hikari:
+      connection-timeout: 30000
+      maximum-pool-size: 10
+      minimum-idle: 5
+      max-lifetime: 1800000
+      keepalive-time: 30000
+      validation-timeout: 5000
+      leak-detection-threshold: 60000
+  
+  # Redis 配置 (用于短期记忆)
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:
+      database: 0
+      timeout: 10000
+      lettuce:
+        pool:
+          max-active: 8
+          max-wait: -1
+          max-idle: 8
+          min-idle: 0
+
+  # Neo4j 配置 (用于知识图谱)
+  neo4j:
+    uri: bolt://localhost:7687
+    authentication:
+      username: neo4j
+      password: memory123
+
+  # RabbitMQ 配置
+  rabbitmq:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+    # 连接池配置 (可选)
+    connection-timeout: 10000
+    # 消息确认机制
+    publisher-confirm-type: correlated  # 发布者确认
+    publisher-returns: true  # 发布者返回
+    listener:
+      simple:
+        acknowledge-mode: manual  # 手动确认 (推荐) 或 auto(自动)
+        prefetch: 10  # 每次从broker拉取的消息数量
+        concurrency: 5  # 最小消费者数量
+        max-concurrency: 10  # 最大消费者数量
+        retry:
+          enabled: true  # 开启重试
+          max-retries: 3  # 最大重试次数
+          initial-interval: 1000  # 重试初始间隔(ms)
+
+  ai:
+    chat:
+      memory:
+        repository:
+          jdbc:
+            initialize-schema: always
+          redis:
+            host: localhost
+            port: 6379
+            time-to-live: 24h
+            max-messages: 50
+    openai:
+#      api-key: EMPTY
+#      base-url: http://localhost:11434
+#      api-key: sk-509c8e31e12e450c80076ee3c8133aaf
+#      base-url: https://api.deepseek.com
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key: sk-b85e92f517584db8b4c54ea2dae5a1ef
+      chat:
+        options:
+           model: qwen-flash
+#         model: qwen3
+#          model: deepseek-r1
+#          model: llama3.2
+#          model: deepseek-chat
+      embedding:
+        options:
+#          model: text-embedding-v4
+          model: nomic-embed-text
+    embedding:
+      base-url: http://localhost:11434
+      api-key: EMPTY
+      model: nomic-embed-text
+    vectorstore:
+      milvus:
+        client:
+          host: localhost
+          port: 19530
+        collection-name: memory_vectors
+        database-name: default
+        initialize-schema: true
+        metric-type: COSINE
+        index-type: IVF_FLAT
+        index-parameters: "{\"nlist\":128}"
+        embedding-dimension: 768
+
+  http:
+#    client:
+#      connect-timeout: 60s
+#      read-timeout: 120s
+    clients:
+      connect-timeout: 60s
+      read-timeout: 120s
+# MyBatis Plus 配置
+mybatis-plus:
+  # 配置 XML 映射文件位置
+  mapper-locations: classpath*:/mapper/**/*.xml
+  # 配置实体类包路径
+  type-aliases-package: com.wk.agent.entity
+  # 全局配置
+  global-config:
+    db-config:
+      id-type: ASSIGN_ID  # 主键策略: ASSIGN_ID(雪花算法), ASSIGN_UUID, AUTO(数据库自增)
+      logic-delete-field: deleted  # 逻辑删除字段名
+      logic-delete-value: 1  # 逻辑已删除值
+      logic-not-delete-value: 0  # 逻辑未删除值
+      table-underline: true  # 表名下划线转换
+  configuration:
+    map-underscore-to-camel-case: true  # 开启驼峰命名自动转换
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl  # 打印SQL日志 (开发环境用)
+    cache-enabled: false
+    # MyBatis原生配置
+    default-statement-timeout: 30
+  # 分页插件配置
+  pagehelper:
+    helper-dialect: postgresql
+    reasonable: true
+    support-methods-arguments: true
+    params: count=countSql
+
+server:
+  port: 8080
+  tomcat:
+    max-threads: 200
+    min-spare-threads: 10
+    max-connections: 10000
+    connection-timeout: 20000
+  servlet:
+    context-path: /
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 50MB
+      file-size-threshold: 2KB
+  compression:
+    enabled: true
+    mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
+    min-response-size: 2048
+
+app:
+  bocha:
+    api-key: sk-adbaeef2ed564c7e9eee3de50a152b7d
+    api-url: https://api.bocha.cn/v1/web-search
+  file:
+    upload-dir: ./uploads
+  codebase:
+    allowed-base-paths: /Users,/home,/var,/opt,/tmp
+    projects:
+      - name: "ai_agent"
+        path: "/Users/wk/Desktop/code/trae/ai_agent"
+      - name: "backend"
+        path: "/Users/wk/Desktop/code/trae/ai_agent/backend"
+      - name: "frontend"
+        path: "/Users/wk/Desktop/code/trae/ai_agent/frontend"

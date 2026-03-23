@@ -1,0 +1,49 @@
+# Node
+node_modules/
+dist/
+.npm
+*.log
+
+# Java
+target/
+*.class
+*.jar
+*.war
+*.ear
+.settings/
+.classpath
+.project
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# Temp
+tmp/
+temp/
+*.tmp
+
+# Build
+build/
+out/
+
+# Dependencies
+.venv/
+venv/
+__pycache__/

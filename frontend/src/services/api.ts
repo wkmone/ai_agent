@@ -176,6 +176,37 @@ export const ragApi = {
   getDocumentsFromKnowledgeBase: (knowledgeBaseId: number) => {
     return api.get<any[]>(`/rag/documents/kb?knowledgeBaseId=${knowledgeBaseId}`).then(res => res.data)
   },
+
+  uploadDocumentAsync: (file: File, ragNamespace?: string, chunkSize?: number, overlapSize?: number) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (ragNamespace) formData.append('ragNamespace', ragNamespace)
+    if (chunkSize) formData.append('chunkSize', chunkSize.toString())
+    if (overlapSize) formData.append('overlapSize', overlapSize.toString())
+    return api.post<any>('/rag/document/async', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }).then(res => res.data)
+  },
+
+  uploadDocumentToKnowledgeBaseAsync: (file: File, knowledgeBaseId: number, chunkSize?: number, overlapSize?: number) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('knowledgeBaseId', knowledgeBaseId.toString())
+    if (chunkSize) formData.append('chunkSize', chunkSize.toString())
+    if (overlapSize) formData.append('overlapSize', overlapSize.toString())
+    return api.post<any>('/rag/document/async/kb', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }).then(res => res.data)
+  },
+
+  getProcessingProgress: (taskId: string) =>
+    api.get<any>(`/rag/progress/${taskId}`).then(res => res.data),
+
+  getAllProcessingProgress: () =>
+    api.get<any>('/rag/progress').then(res => res.data),
+
+  clearProgress: (taskId: string) =>
+    api.delete<any>(`/rag/progress/${taskId}`).then(res => res.data),
 }
 
 export const knowledgeBaseApi = {

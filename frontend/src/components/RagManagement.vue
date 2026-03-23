@@ -119,9 +119,17 @@
               <el-form label-width="100px">
                 <el-form-item>
                   <input type="file" ref="fileInputRef" style="display: none" @change="handleFileUpload" accept=".txt,.md,.html,.pdf,.doc,.docx,.ppt,.pptx,.json,.csv" />
-                  <el-button type="primary" @click="() => fileInputRef?.click()" :loading="uploadLoading" class="gradient-btn">选择文件上传</el-button>
+                  <el-button type="primary" @click="() => fileInputRef?.click()" :loading="uploadLoading" class="gradient-btn">选择文件上传（异步）</el-button>
                 </el-form-item>
-                <el-progress v-if="uploadLoading" :percentage="uploadProgress" :stroke-width="8" class="styled-progress" />
+                <el-progress v-if="uploadLoading && currentTaskId" :percentage="Math.round(processingProgress * 100)" :stroke-width="8" :status="progressStatus" class="styled-progress">
+                  <template #default="{ percentage }">
+                    <span class="percentage-text">{{ progressMessage }}</span>
+                  </template>
+                </el-progress>
+                <div v-if="currentTaskId" class="task-info">
+                  <p><strong>任务ID:</strong> {{ currentTaskId }}</p>
+                  <p><strong>状态:</strong> {{ getStatusText(processingStatus) }}</p>
+                </div>
               </el-form>
             </el-card>
           </el-tab-pane>
@@ -272,6 +280,12 @@ const documents = ref<any[]>([])
 const uploadLoading = ref(false)
 const uploadProgress = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+
+const currentTaskId = ref<string | null>(null)
+const processingProgress = ref(0)
+const progressStatus = ref('')
+const progressMessage = ref('')
+let progressPollingInterval: number | null = null
 
 const showCreateDialog = ref(false)
 const newKbName = ref('')
@@ -435,56 +449,86 @@ async function handleFileUpload(event: Event) {
   if (!file) return
 
   uploadLoading.value = true
-  uploadProgress.value = 0
+  currentTaskId.value = null
+  processingProgress.value = 0
+  progressStatus.value = ''
+  progressMessage.value = ''
 
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('knowledgeBaseId', selectedKnowledgeBaseId.value.toString())
-    formData.append('chunkSize', chunkSize.value.toString())
-    formData.append('overlapSize', overlapSize.value.toString())
+    const result = await ragApi.uploadDocumentToKnowledgeBaseAsync(
+      file,
+      selectedKnowledgeBaseId.value,
+      chunkSize.value,
+      overlapSize.value
+    )
 
-    const xhr = new XMLHttpRequest()
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        uploadProgress.value = Math.round((e.loaded / e.total) * 100)
-      }
-    }
-
-    xhr.onload = () => {
-      if (xhr.status === 200) {
-        const result = JSON.parse(xhr.responseText)
-        if (result.success) {
-          ElMessage.success(`上传成功！文档ID: ${result.documentId}`)
-          loadStats()
-          loadDocuments()
-        } else {
-          ElMessage.error(`上传失败: ${result.error}`)
-        }
-      } else {
-        ElMessage.error(`上传失败: ${xhr.statusText}`)
-      }
+    if (result.success) {
+      currentTaskId.value = result.taskId
+      ElMessage.success(`任务已提交！任务ID: ${result.taskId}`)
+      startProgressPolling(result.taskId)
+    } else {
+      ElMessage.error(`提交失败: ${result.error}`)
       uploadLoading.value = false
-      uploadProgress.value = 0
     }
-
-    xhr.onerror = () => {
-      ElMessage.error('上传失败')
-      uploadLoading.value = false
-      uploadProgress.value = 0
-    }
-
-    xhr.open('POST', `${API_BASE_URL}/rag/document/kb`)
-    xhr.send(formData)
   } catch (error: any) {
     ElMessage.error(`上传失败: ${error.message}`)
     uploadLoading.value = false
-    uploadProgress.value = 0
   }
 
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
   }
+}
+
+function startProgressPolling(taskId: string) {
+  if (progressPollingInterval) {
+    clearInterval(progressPollingInterval)
+  }
+
+  progressPollingInterval = window.setInterval(async () => {
+    try {
+      const progress = await ragApi.getProcessingProgress(taskId)
+      if (progress) {
+        processingProgress.value = progress.progress || 0
+        progressStatus.value = progress.status || ''
+        progressMessage.value = progress.message || ''
+
+        if (progress.status === 'COMPLETED') {
+          ElMessage.success(`处理完成！文档ID: ${progress.documentId}`)
+          stopProgressPolling()
+          uploadLoading.value = false
+          loadStats()
+          loadDocuments()
+        } else if (progress.status === 'FAILED') {
+          ElMessage.error(`处理失败: ${progress.errorMessage}`)
+          stopProgressPolling()
+          uploadLoading.value = false
+        }
+      }
+    } catch (error) {
+      console.error('轮询进度失败:', error)
+    }
+  }, 1000)
+}
+
+function stopProgressPolling() {
+  if (progressPollingInterval) {
+    clearInterval(progressPollingInterval)
+    progressPollingInterval = null
+  }
+}
+
+function getStatusText(status: string): string {
+  const statusMap: Record<string, string> = {
+    'PENDING': '等待处理',
+    'PARSING': '解析中',
+    'CHUNKING': '分块中',
+    'VECTORIZING': '向量化中',
+    'SAVING': '保存中',
+    'COMPLETED': '已完成',
+    'FAILED': '失败'
+  }
+  return statusMap[status] || status
 }
 
 async function handleSearch() {
@@ -1157,5 +1201,30 @@ function handleTabChange(tabName: string) {
 .custom-table :deep(.el-table__body td) {
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border-color);
+}
+
+.task-info {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+}
+
+.task-info p {
+  margin: 8px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.task-info strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.percentage-text {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
 }
 </style>

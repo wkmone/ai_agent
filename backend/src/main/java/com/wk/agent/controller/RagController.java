@@ -1,6 +1,11 @@
 package com.wk.agent.controller;
 
+import com.wk.agent.rabbitmq.MessageProducer;
+import com.wk.agent.rabbitmq.dto.RagProcessingProgress;
+import com.wk.agent.rabbitmq.dto.RagProcessingTask;
+import com.wk.agent.service.RagProgressService;
 import com.wk.agent.service.RagService;
+import com.wk.agent.service.rag.DocumentParserService;
 import com.wk.agent.service.rag.FileStorageService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -13,6 +18,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/rag")
@@ -24,6 +30,15 @@ public class RagController {
 
     @Autowired
     private FileStorageService fileStorageService;
+
+    @Autowired
+    private DocumentParserService documentParser;
+
+    @Autowired
+    private MessageProducer messageProducer;
+
+    @Autowired
+    private RagProgressService progressService;
 
     @PostMapping("/text")
     @Operation(summary = "添加文本", description = "将文本内容添加到知识库")
@@ -276,5 +291,165 @@ public class RagController {
 
         List<Map<String, Object>> documents = ragService.getDocumentsWithKnowledgeBase(knowledgeBaseId);
         return ResponseEntity.ok(documents);
+    }
+
+    @PostMapping("/document/async")
+    @Operation(summary = "异步上传文档", description = "异步上传文档文件到知识库，立即返回任务ID")
+    public ResponseEntity<Map<String, Object>> uploadDocumentAsync(
+            @Parameter(description = "文档文件") @RequestParam("file") MultipartFile file,
+            @Parameter(description = "命名空间") @RequestParam(required = false, defaultValue = "default") String ragNamespace,
+            @Parameter(description = "分块大小") @RequestParam(required = false, defaultValue = "500") int chunkSize,
+            @Parameter(description = "重叠大小") @RequestParam(required = false, defaultValue = "50") int overlapSize) {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "文件为空"));
+        }
+
+        String originalFilename = file.getOriginalFilename();
+        if (!fileStorageService.isValidFileType(originalFilename)) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error", "不支持的文件类型。支持的格式: txt, md, html, pdf, doc, docx, ppt, pptx, json, csv"
+            ));
+        }
+
+        try {
+            String taskId = UUID.randomUUID().toString().substring(0, 12);
+            String content = documentParser.parseMultipartFile(file);
+
+            if (content == null || content.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("success", false, "error", "无法读取文档内容"));
+            }
+
+            RagProcessingTask task = RagProcessingTask.builder()
+                .taskId(taskId)
+                .ragNamespace(ragNamespace)
+                .sourcePath(originalFilename)
+                .fileContent(content)
+                .fileName(originalFilename)
+                .fileType(file.getContentType())
+                .chunkSize(chunkSize)
+                .overlapSize(overlapSize)
+                .createdAt(System.currentTimeMillis())
+                .build();
+
+            RagProcessingProgress initialProgress = RagProcessingProgress.builder()
+                .taskId(taskId)
+                .status(RagProcessingProgress.Status.PENDING)
+                .message("任务已提交，等待处理")
+                .progress(0.0)
+                .timestamp(System.currentTimeMillis())
+                .build();
+            progressService.saveProgress(initialProgress);
+
+            messageProducer.sendRagProcessingTask(task);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("taskId", taskId);
+            result.put("fileName", originalFilename);
+            result.put("message", "文档已提交，正在异步处理中");
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error", "提交任务失败: " + e.getMessage()
+            ));
+        }
+    }
+
+    @PostMapping("/document/async/kb")
+    @Operation(summary = "异步上传文档到知识库", description = "异步上传文档文件到指定知识库，立即返回任务ID")
+    public ResponseEntity<Map<String, Object>> uploadDocumentToKnowledgeBaseAsync(
+            @Parameter(description = "文档文件") @RequestParam("file") MultipartFile file,
+            @Parameter(description = "知识库ID") @RequestParam Long knowledgeBaseId,
+            @Parameter(description = "分块大小") @RequestParam(required = false, defaultValue = "500") int chunkSize,
+            @Parameter(description = "重叠大小") @RequestParam(required = false, defaultValue = "50") int overlapSize) {
+
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", "文件为空"));
+        }
+
+        String originalFilename = file.getOriginalFilename();
+        if (!fileStorageService.isValidFileType(originalFilename)) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error", "不支持的文件类型。支持的格式: txt, md, html, pdf, doc, docx, ppt, pptx, json, csv"
+            ));
+        }
+
+        try {
+            String taskId = UUID.randomUUID().toString().substring(0, 12);
+            String content = documentParser.parseMultipartFile(file);
+
+            if (content == null || content.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("success", false, "error", "无法读取文档内容"));
+            }
+
+            RagProcessingTask task = RagProcessingTask.builder()
+                .taskId(taskId)
+                .knowledgeBaseId(knowledgeBaseId)
+                .sourcePath(originalFilename)
+                .fileContent(content)
+                .fileName(originalFilename)
+                .fileType(file.getContentType())
+                .chunkSize(chunkSize)
+                .overlapSize(overlapSize)
+                .createdAt(System.currentTimeMillis())
+                .build();
+
+            RagProcessingProgress initialProgress = RagProcessingProgress.builder()
+                .taskId(taskId)
+                .status(RagProcessingProgress.Status.PENDING)
+                .message("任务已提交，等待处理")
+                .progress(0.0)
+                .timestamp(System.currentTimeMillis())
+                .build();
+            progressService.saveProgress(initialProgress);
+
+            messageProducer.sendRagProcessingTask(task);
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("success", true);
+            result.put("taskId", taskId);
+            result.put("fileName", originalFilename);
+            result.put("knowledgeBaseId", knowledgeBaseId);
+            result.put("message", "文档已提交，正在异步处理中");
+            return ResponseEntity.ok(result);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error", "提交任务失败: " + e.getMessage()
+            ));
+        }
+    }
+
+    @GetMapping("/progress/{taskId}")
+    @Operation(summary = "查询处理进度", description = "查询异步文档处理任务的进度")
+    public ResponseEntity<RagProcessingProgress> getProcessingProgress(
+            @Parameter(description = "任务ID") @PathVariable String taskId) {
+
+        RagProcessingProgress progress = progressService.getProgress(taskId);
+        if (progress == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(progress);
+    }
+
+    @GetMapping("/progress")
+    @Operation(summary = "查询所有进度", description = "查询所有异步文档处理任务的进度")
+    public ResponseEntity<Map<String, RagProcessingProgress>> getAllProcessingProgress() {
+        return ResponseEntity.ok(progressService.getAllProgress());
+    }
+
+    @DeleteMapping("/progress/{taskId}")
+    @Operation(summary = "清除进度", description = "清除指定任务的进度信息")
+    public ResponseEntity<Map<String, Object>> clearProgress(
+            @Parameter(description = "任务ID") @PathVariable String taskId) {
+
+        progressService.clearProgress(taskId);
+        return ResponseEntity.ok(Map.of("success", true, "message", "进度已清除"));
     }
 }

@@ -1,6 +1,8 @@
 package com.wk.agent.rabbitmq;
 
 import com.wk.agent.config.RabbitMQConfig;
+import com.wk.agent.rabbitmq.dto.RagProcessingProgress;
+import com.wk.agent.rabbitmq.dto.RagProcessingTask;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +52,38 @@ public class MessageProducer {
             log.info("发送通知消息成功: {}", message);
         } catch (Exception e) {
             log.error("发送通知消息失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 发送 RAG 处理任务
+     */
+    public void sendRagProcessingTask(RagProcessingTask task) {
+        try {
+            rabbitTemplate.convertAndSend(
+                RabbitMQConfig.RAG_PROCESSING_EXCHANGE,
+                "rag.processing.task",
+                task
+            );
+            log.info("发送 RAG 处理任务成功: taskId={}", task.getTaskId());
+        } catch (Exception e) {
+            log.error("发送 RAG 处理任务失败: taskId={}, error={}", task.getTaskId(), e.getMessage());
+        }
+    }
+
+    /**
+     * 发送 RAG 处理进度更新
+     */
+    public void sendRagProgress(RagProcessingProgress progress) {
+        try {
+            rabbitTemplate.convertAndSend(
+                RabbitMQConfig.RAG_PROGRESS_EXCHANGE,
+                "rag.progress.update",
+                progress
+            );
+            log.debug("发送 RAG 进度更新: taskId={}, status={}", progress.getTaskId(), progress.getStatus());
+        } catch (Exception e) {
+            log.error("发送 RAG 进度更新失败: taskId={}, error={}", progress.getTaskId(), e.getMessage());
         }
     }
 }

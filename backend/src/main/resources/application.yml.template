@@ -6,7 +6,7 @@ spring:
     driver-class-name: org.postgresql.Driver
     url: jdbc:postgresql://localhost:5432/ai_agent
     username: postgres
-    password: 123456
+    password: ${DB_PASSWORD}
     hikari:
       connection-timeout: 30000
       maximum-pool-size: 10
@@ -15,13 +15,13 @@ spring:
       keepalive-time: 30000
       validation-timeout: 5000
       leak-detection-threshold: 60000
-  
+
   # Redis 配置 (用于短期记忆)
   data:
     redis:
       host: localhost
       port: 6379
-      password:
+      password: ${REDIS_PASSWORD}
       database: 0
       timeout: 10000
       lettuce:
@@ -36,7 +36,7 @@ spring:
     uri: bolt://localhost:7687
     authentication:
       username: neo4j
-      password: memory123
+      password: ${NEO4J_PASSWORD}
 
   # RabbitMQ 配置
   rabbitmq:
@@ -78,7 +78,7 @@ spring:
 #      api-key: sk-509c8e31e12e450c80076ee3c8133aaf
 #      base-url: https://api.deepseek.com
       base-url: https://dashscope.aliyuncs.com/compatible-mode
-      api-key: sk-b85e92f517584db8b4c54ea2dae5a1ef
+      api-key: ${OPENAI_API_KEY}
       chat:
         options:
            model: qwen-flash
@@ -162,7 +162,7 @@ server:
 
 app:
   bocha:
-    api-key: sk-adbaeef2ed564c7e9eee3de50a152b7d
+    api-key: ${BOCHA_API_KEY}
     api-url: https://api.bocha.cn/v1/web-search
   file:
     upload-dir: ./uploads

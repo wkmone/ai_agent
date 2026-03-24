@@ -1,9 +1,15 @@
 package com.wk.agent.impl;
 
+import com.wk.agent.advisor.MyLoggerAdvisor;
 import com.wk.agent.core.AbstractAgent;
 import com.wk.agent.core.AgentResult;
 import com.wk.agent.core.AgentStatus;
 import com.wk.agent.core.AgentTask;
+import com.wk.agent.entity.AgentConfig;
+import com.wk.agent.factory.DynamicChatClientFactory;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,6 +23,9 @@ public class ReflectionAgent extends AbstractAgent {
     private String initialPromptTemplate;
     private String reflectPromptTemplate;
     private String refinePromptTemplate;
+    private final ChatMemory chatMemory;
+    private final DynamicChatClientFactory dynamicChatClientFactory;
+    private final Long modelConfigId;
     
     private static final String DEFAULT_INITIAL_PROMPT = """
         你是一位资深的专家。请根据以下要求完成任务。
@@ -70,12 +79,15 @@ public class ReflectionAgent extends AbstractAgent {
         }
     }
     
-    public ReflectionAgent(String id, String name, String description) {
+    public ReflectionAgent(String id, String name, String description, AgentConfig config, DynamicChatClientFactory dynamicChatClientFactory, ChatMemory chatMemory) {
         super(id, name, description);
         this.memoryRecords = new ArrayList<>();
         this.initialPromptTemplate = DEFAULT_INITIAL_PROMPT;
         this.reflectPromptTemplate = DEFAULT_REFLECT_PROMPT;
         this.refinePromptTemplate = DEFAULT_REFINE_PROMPT;
+        this.chatMemory = chatMemory;
+        this.dynamicChatClientFactory = dynamicChatClientFactory;
+        this.modelConfigId = config.getModelConfigId();
     }
     
     public void setCustomPrompts(String initialPrompt, String reflectPrompt, String refinePrompt) {
@@ -98,6 +110,11 @@ public class ReflectionAgent extends AbstractAgent {
     public void initialize() {
         log.info("初始化ReflectionAgent: {} ({})", name, id);
         setStatus(AgentStatus.RUNNING);
+        if (this.modelConfigId != null) {
+            setChatModel(this.dynamicChatClientFactory.createChatModel(this.modelConfigId));
+        } else {
+            log.warn("modelConfigId为null，无法初始化chatModel，请确保AgentConfig中设置了modelConfigId");
+        }
         log.info("ReflectionAgent初始化完成: {} ({})", name, id);
     }
     
@@ -106,11 +123,6 @@ public class ReflectionAgent extends AbstractAgent {
         log.info("执行ReflectionAgent任务: {} ({})", name, id);
         log.info("任务内容: {}", task.getTaskContent());
         log.info("最大迭代次数: {}", maxIterations);
-        
-        if (chatClient == null) {
-            log.error("ReflectionAgent聊天客户端未初始化: {} ({})", name, id);
-            return new AgentResult("聊天客户端未初始化", false);
-        }
         
         try {
             resetMemory();
@@ -191,11 +203,7 @@ public class ReflectionAgent extends AbstractAgent {
                 log.info("使用温度参数: {}", temperature);
             }
             
-            String response = chatClient.prompt()
-                .user(prompt)
-                .options(optionsBuilder.build())
-                .call()
-                .content();
+            String response = chatClientCall(optionsBuilder.build(), prompt);
             
             log.info("初始执行成功");
             return response;
@@ -222,11 +230,7 @@ public class ReflectionAgent extends AbstractAgent {
                 log.info("使用温度参数: {}", temperature);
             }
             
-            String response = chatClient.prompt()
-                .user(prompt)
-                .options(optionsBuilder.build())
-                .call()
-                .content();
+            String response = chatClientCall(optionsBuilder.build(), prompt);
             
             log.info("反思成功");
             return response;
@@ -254,11 +258,7 @@ public class ReflectionAgent extends AbstractAgent {
                 log.info("使用温度参数: {}", temperature);
             }
             
-            String response = chatClient.prompt()
-                .user(prompt)
-                .options(optionsBuilder.build())
-                .call()
-                .content();
+            String response = chatClientCall(optionsBuilder.build(), prompt);
             
             log.info("优化成功");
             return response;
@@ -318,5 +318,24 @@ public class ReflectionAgent extends AbstractAgent {
             }
         }
         return executions;
+    }
+    
+    private String chatClientCall(org.springframework.ai.openai.OpenAiChatOptions options, String message) {
+        if (chatModel == null) {
+            throw new IllegalStateException("chatModel未初始化，请确保AgentConfig中设置了modelConfigId");
+        }
+        return ChatClient.builder(chatModel)
+                .defaultAdvisors(
+                        MessageChatMemoryAdvisor.builder(chatMemory).build(),
+                        MyLoggerAdvisor.builder()
+                                .showAvailableTools(true)
+                                .showSystemMessage(true)
+                                .build())
+                .build()
+                .prompt()
+                .user(message)
+                .options(options)
+                .call()
+                .content();
     }
 }

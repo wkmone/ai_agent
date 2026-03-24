@@ -3,6 +3,7 @@ package com.wk.agent.rabbitmq;
 import com.wk.agent.rabbitmq.dto.RagProcessingProgress;
 import com.wk.agent.rabbitmq.dto.RagProcessingTask;
 import com.wk.agent.service.AgentTaskService;
+import com.wk.agent.service.RagProgressService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,6 +24,9 @@ public class MessageConsumer {
 
     @Autowired
     private RagAsyncProcessor ragAsyncProcessor;
+
+    @Autowired
+    private RagProgressService progressService;
 
     /**
      * 监听聊天队列
@@ -126,6 +130,8 @@ public class MessageConsumer {
             .errorMessage(errorMessage)
             .timestamp(System.currentTimeMillis())
             .build();
-        messageProducer.sendRagProgress(progressObj);
+        // 直接更新进度，绕过RabbitMQ
+        progressService.saveProgress(progressObj);
+        log.debug("进度已更新: taskId={}, status={}, progress={}", taskId, status, progress);
     }
 }

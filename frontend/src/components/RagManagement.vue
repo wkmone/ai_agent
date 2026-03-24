@@ -122,13 +122,13 @@
                   <el-button type="primary" @click="() => fileInputRef?.click()" :loading="uploadLoading" class="gradient-btn">选择文件上传（异步）</el-button>
                 </el-form-item>
                 <el-progress v-if="uploadLoading && currentTaskId" :percentage="Math.round(processingProgress * 100)" :stroke-width="8" :status="progressStatus" class="styled-progress">
-                  <template #default="{ percentage }">
+                  <template #default>
                     <span class="percentage-text">{{ progressMessage }}</span>
                   </template>
                 </el-progress>
                 <div v-if="currentTaskId" class="task-info">
                   <p><strong>任务ID:</strong> {{ currentTaskId }}</p>
-                  <p><strong>状态:</strong> {{ getStatusText(processingStatus) }}</p>
+                  <p><strong>状态:</strong> {{ getStatusText(progressStatus) }}</p>
                 </div>
               </el-form>
             </el-card>
@@ -254,10 +254,8 @@ import { ragApi, knowledgeBaseApi } from '../services/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Files, DataLine, Folder, Plus, MoreFilled, ChatDotRound } from '@element-plus/icons-vue'
 
-const API_BASE_URL = 'http://localhost:8080/api/v1'
-
 const knowledgeBases = ref<any[]>([])
-const selectedKnowledgeBaseId = ref<number | null>(null)
+const selectedKnowledgeBaseId = ref<string | null>(null)
 const stats = ref<any>(null)
 const activeTab = ref('add')
 const loading = ref(false)
@@ -278,7 +276,6 @@ const answerLoading = ref(false)
 
 const documents = ref<any[]>([])
 const uploadLoading = ref(false)
-const uploadProgress = ref(0)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const currentTaskId = ref<string | null>(null)
@@ -326,7 +323,7 @@ async function loadKnowledgeBases() {
   }
 }
 
-async function selectKnowledgeBase(id: number) {
+async function selectKnowledgeBase(id: string) {
   selectedKnowledgeBaseId.value = id
   await loadStats()
   await loadDocuments()
@@ -1028,6 +1025,12 @@ function handleTabChange(tabName: string) {
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-color);
   margin: 0;
+  padding-left: 20px;
+}
+
+.custom-tabs :deep(.el-tabs__nav) {
+  margin-left: 0;
+  padding-left: 0;
 }
 
 .custom-tabs :deep(.el-tabs__nav-wrap::after) {

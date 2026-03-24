@@ -172,12 +172,12 @@
             <div v-if="configTab === 'model'" class="tab-content">
               <el-form :model="formData" label-width="120px">
                 <el-form-item label="选择模型" required>
-                  <el-select v-model="formData.modelName" placeholder="请选择模型" style="width: 100%">
+                  <el-select v-model="formData.modelConfigId" placeholder="请选择模型" style="width: 100%">
                     <el-option
                       v-for="config in modelConfigs"
                       :key="config.id"
                       :label="`${config.name} (${config.modelName})`"
-                      :value="config.modelName"
+                      :value="config.id"
                     />
                   </el-select>
                 </el-form-item>
@@ -303,26 +303,27 @@ interface Message {
 }
 
 interface AgentConfig {
-  id: number
+  id: string
   name: string
   description?: string
   baseAgentType: string
-  modelName: string
+  modelName?: string
+  modelConfigId?: string
   temperature: number
-  knowledgeBaseId?: number
+  knowledgeBaseId?: string
   tools?: string
   createdAt: string
   updatedAt: string
 }
 
 interface KnowledgeBase {
-  id: number
+  id: string
   name: string
   description?: string
 }
 
 interface ModelConfig {
-  id: number
+  id: string
   name: string
   provider: string
   modelName: string
@@ -335,7 +336,7 @@ interface ModelConfig {
 }
 
 interface McpServer {
-  id: number
+  id: string
   name: string
   description?: string
   serverType?: string
@@ -357,13 +358,13 @@ const copiedMessageId = ref<string | null>(null)
 const messageListRef = ref<HTMLElement | null>(null)
 const isQuickChatMode = ref(true)
 const quickChatSessionId = ref('global_quick_chat_session')
-const selectedServers = ref<number[]>([])
+const selectedServers = ref<string[]>([])
 
 const formData = ref<Partial<AgentConfig>>({
   name: '',
   description: '',
   baseAgentType: '',
-  modelName: '',
+  modelConfigId: undefined,
   temperature: 0.7,
   knowledgeBaseId: undefined,
   tools: ''
@@ -422,7 +423,12 @@ async function loadKnowledgeBases() {
 async function loadModelConfigs() {
   try {
     const data = await modelConfigApi.getAllConfigs()
-    modelConfigs.value = Array.isArray(data) ? data : []
+    // 强制将 ID 转换为字符串，避免 JavaScript 精度丢失
+    modelConfigs.value = Array.isArray(data) ? data.map(mc => ({
+      ...mc,
+      id: mc.id.toString()
+    })) : []
+    console.log('Model configs loaded with string IDs:', modelConfigs.value)
   } catch (error) {
     console.error('Failed to load model configs:', error)
     modelConfigs.value = []
@@ -465,7 +471,7 @@ function showCreateDialog() {
     name: '',
     description: '',
     baseAgentType: '',
-    modelName: '',
+    modelConfigId: undefined,
     temperature: 0.7,
     knowledgeBaseId: undefined,
     tools: ''
@@ -476,10 +482,9 @@ function showCreateDialog() {
 function showEditDialog(agent: AgentConfig) {
   isEditing.value = true
   configTab.value = 'basic'
-  selectedServers.value = agent.tools ? agent.tools.split(',').map((t: string) => parseInt(t.trim())).filter((t: number) => !isNaN(t)) : []
-  formData.value = {
-    ...agent
-  }
+  selectedServers.value = agent.tools ? agent.tools.split(',').map((t: string) => t.trim()).filter((t: string) => t.length > 0) : []
+  const { modelName, ...rest } = agent
+  formData.value = rest
   dialogVisible.value = true
 }
 
@@ -487,23 +492,21 @@ function updateServersString() {
   formData.value.tools = selectedServers.value.join(',')
 }
 
-function removeServer(serverId: number) {
-  selectedServers.value = selectedServers.value.filter(id => id !== serverId)
-  formData.value.tools = selectedServers.value.join(',')
-}
-
 async function handleSave() {
-  if (!formData.value.name || !formData.value.baseAgentType || !formData.value.modelName) {
+  if (!formData.value.name || !formData.value.baseAgentType || !formData.value.modelConfigId) {
     ElMessage.warning('请填写必填字段')
     return
   }
 
   try {
+    const dataToSave = { ...formData.value }
+    delete dataToSave.modelName
+    
     if (isEditing.value && formData.value.id) {
-      await agentConfigApi.updateAgentConfig(formData.value.id, formData.value)
+      await agentConfigApi.updateAgentConfig(formData.value.id, dataToSave)
       ElMessage.success('更新成功')
     } else {
-      const newAgent = await agentConfigApi.createAgentConfig(formData.value)
+      const newAgent = await agentConfigApi.createAgentConfig(dataToSave)
       ElMessage.success('创建成功')
       selectAgent(newAgent)
     }

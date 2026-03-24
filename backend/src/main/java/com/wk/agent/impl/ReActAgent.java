@@ -1,18 +1,22 @@
 package com.wk.agent.impl;
 
+import com.wk.agent.advisor.MyLoggerAdvisor;
 import com.wk.agent.core.AbstractAgent;
 import com.wk.agent.core.AgentResult;
 import com.wk.agent.core.AgentStatus;
 import com.wk.agent.core.AgentTask;
+import com.wk.agent.entity.AgentConfig;
 import com.wk.agent.entity.SessionMemory;
-import jakarta.annotation.Resource;
+import com.wk.agent.factory.DynamicChatClientFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 
@@ -21,17 +25,20 @@ import java.util.List;
 
 public class ReActAgent extends AbstractAgent {
 
-    @Resource
-    private ToolCallback[] allTools;
-
     private static final int DEFAULT_MAX_ITERATIONS = 10;
 
     private int maxIterations;
     private String currentSessionId;
+    private final ChatMemory chatMemory;
+    private final DynamicChatClientFactory dynamicChatClientFactory;
+    private final Long modelConfigId;
 
-    public ReActAgent(String id, String name, String description) {
+    public ReActAgent(String id, String name, String description, AgentConfig config, DynamicChatClientFactory dynamicChatClientFactory, ChatMemory chatMemory) {
         super(id, name, description);
         this.maxIterations = DEFAULT_MAX_ITERATIONS;
+        this.chatMemory = chatMemory;
+        this.dynamicChatClientFactory = dynamicChatClientFactory;
+        this.modelConfigId = config.getModelConfigId();
     }
 
     public void setMaxIterations(int maxIterations) {
@@ -42,6 +49,11 @@ public class ReActAgent extends AbstractAgent {
     public void initialize() {
         log.info("初始化ReActAgent: {} ({})", name, id);
         setStatus(AgentStatus.RUNNING);
+        if (this.modelConfigId != null) {
+            setChatModel(this.dynamicChatClientFactory.createChatModel(this.modelConfigId));
+        } else {
+            log.warn("modelConfigId为null，无法初始化chatModel，请确保AgentConfig中设置了modelConfigId");
+        }
         log.info("ReActAgent初始化完成: {} ({})", name, id);
     }
 
@@ -70,11 +82,6 @@ public class ReActAgent extends AbstractAgent {
     @Override
     public AgentResult processMessage(String sessionId, String message) {
         log.info("处理ReActAgent消息: sessionId={}", sessionId);
-
-        if (chatClient == null) {
-            log.error("ReActAgent聊天客户端未初始化: {} ({})", name, id);
-            return new AgentResult("聊天客户端未初始化", false);
-        }
 
         this.currentSessionId = sessionId;
 
@@ -184,12 +191,7 @@ public class ReActAgent extends AbstractAgent {
             log.info("使用温度参数: {}", temperature);
         }
 
-        Prompt prompt = new Prompt(messages, optionsBuilder.build());
-
-        return chatClient.prompt(prompt)
-                .toolCallbacks(allTools)
-                .call()
-                .chatResponse();
+        return chatClientCall(optionsBuilder.build(), messages);
     }
 
     private boolean hasToolCalls(AssistantMessage message) {
@@ -223,5 +225,25 @@ public class ReActAgent extends AbstractAgent {
         }
 
         return "错误：未找到工具 " + toolCall.name();
+    }
+
+    private ChatResponse chatClientCall(ToolCallingChatOptions options, List<Message> messages) {
+        if (chatModel == null) {
+            throw new IllegalStateException("chatModel未初始化，请确保AgentConfig中设置了modelConfigId");
+        }
+        return ChatClient.builder(chatModel)
+                .defaultAdvisors(
+                        MessageChatMemoryAdvisor.builder(chatMemory).build(),
+                        MyLoggerAdvisor.builder()
+                                .showAvailableTools(true)
+                                .showSystemMessage(true)
+                                .build())
+                .build()
+                .prompt()
+                .messages(messages)
+                .options(options)
+                .toolCallbacks(toolCallbacks)
+                .call()
+                .chatResponse();
     }
 }

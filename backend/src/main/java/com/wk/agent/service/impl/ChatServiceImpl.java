@@ -43,6 +43,9 @@ public class ChatServiceImpl implements ChatService {
     @Autowired
     private MultiLayerMemoryManager multiLayerMemoryManager;
 
+    @Autowired(required = false)
+    private com.wk.agent.service.EntityRelationExtractionService entityRelationExtractionService;
+
     private ModelConfig cachedConfig;
     private long lastConfigUpdateTime = 0;
     private static final long CONFIG_CACHE_TTL = 60000;
@@ -170,6 +173,16 @@ public class ChatServiceImpl implements ChatService {
             messageService.saveMessage(assistantMessage);
 
             memoryContextBuilderV2.saveConversation(finalSessionId, message, content);
+
+            if (entityRelationExtractionService != null) {
+                try {
+                    String combinedText = "用户: " + message + "\n助手: " + content;
+                    entityRelationExtractionService.extractAndStoreKnowledge(combinedText, finalSessionId);
+                    log.debug("已从对话中提取知识到知识图谱: sessionId={}", finalSessionId);
+                } catch (Exception e) {
+                    log.warn("知识提取失败，跳过: {}", e.getMessage());
+                }
+            }
 
             return ChatResponse.success(content, modelName, 0L);
         } catch (Exception e) {

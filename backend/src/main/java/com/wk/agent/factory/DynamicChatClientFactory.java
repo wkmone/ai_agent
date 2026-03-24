@@ -23,7 +23,16 @@ public class DynamicChatClientFactory {
     private ChatMemory chatMemory;
 
     public ChatModel createChatModel(Long modelConfigId) {
-        ModelConfig config = modelConfigService.getById(modelConfigId);;
+        if (modelConfigId == null) {
+            throw new IllegalArgumentException("modelConfigId不能为空");
+        }
+        ModelConfig config = modelConfigService.getById(modelConfigId);
+        if (config == null) {
+            throw new IllegalArgumentException("未找到modelConfigId为 " + modelConfigId + " 的模型配置");
+        }
+        if (config.getModelName() == null || config.getBaseUrl() == null || config.getApiKey() == null) {
+            throw new IllegalArgumentException("模型配置不完整，请检查modelName、baseUrl和apiKey是否都已设置");
+        }
         return OpenAiChatModel.builder()
                 .defaultOptions(OpenAiChatOptions.builder()
                         .model(config.getModelName())

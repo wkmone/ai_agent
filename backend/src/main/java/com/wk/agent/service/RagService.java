@@ -6,6 +6,7 @@ import com.wk.agent.service.rag.DocumentChunkingService;
 import com.wk.agent.service.rag.DocumentChunkingService.ChunkResult;
 import com.wk.agent.service.rag.DocumentParserService;
 import com.wk.agent.service.rag.RerankerService;
+import com.wk.agent.service.rag.optimization.HybridRetrievalService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -55,6 +56,9 @@ public class RagService {
 
     @Autowired(required = false)
     private RedisTemplate<String, Object> redisTemplate;
+    
+    @Autowired(required = false)
+    private HybridRetrievalService hybridRetrievalService;
 
     public Map<String, Object> addMultipartFile(MultipartFile file, String ragNamespace,
                                                   int chunkSize, int overlapSize) {
@@ -108,6 +112,18 @@ public class RagService {
 
             vectorStore.add(documents);
             saveVectorIds(documentId, vectorIds);
+            
+            for (int i = 0; i < documents.size(); i++) {
+                Document doc = documents.get(i);
+                if (hybridRetrievalService != null) {
+                    hybridRetrievalService.indexDocument(
+                        doc.getId(),
+                        doc.getText(),
+                        ragNamespace,
+                        doc.getMetadata()
+                    );
+                }
+            }
 
             for (RagChunk rc : ragChunks) {
                 ragChunkMapper.insert(rc);
@@ -178,6 +194,18 @@ public class RagService {
 
             vectorStore.add(documents);
             saveVectorIds(documentId, vectorIds);
+            
+            for (int i = 0; i < documents.size(); i++) {
+                Document doc = documents.get(i);
+                if (hybridRetrievalService != null) {
+                    hybridRetrievalService.indexDocument(
+                        doc.getId(),
+                        doc.getText(),
+                        ragNamespace,
+                        doc.getMetadata()
+                    );
+                }
+            }
 
             for (RagChunk rc : ragChunks) {
                 ragChunkMapper.insert(rc);
@@ -243,6 +271,18 @@ public class RagService {
 
             vectorStore.add(documents);
             saveVectorIds(documentId, vectorIds);
+            
+            for (int i = 0; i < documents.size(); i++) {
+                Document doc = documents.get(i);
+                if (hybridRetrievalService != null) {
+                    hybridRetrievalService.indexDocument(
+                        doc.getId(),
+                        doc.getText(),
+                        ragNamespace,
+                        doc.getMetadata()
+                    );
+                }
+            }
 
             for (RagChunk rc : ragChunks) {
                 ragChunkMapper.insert(rc);
@@ -280,6 +320,30 @@ public class RagService {
 
         List<Map<String, Object>> results = new ArrayList<>();
 
+        try {
+            if (hybridRetrievalService != null) {
+                results = hybridRetrievalService.search(query, ragNamespace, topK, threshold);
+            } else {
+                results = performLegacySearch(query, ragNamespace, topK, threshold);
+            }
+
+            if (enableRerank && !results.isEmpty()) {
+                results = rerankerService.rerank(query, results, topK);
+            }
+
+            saveToCache(cacheKey, results);
+
+        } catch (Exception e) {
+            log.error("检索失败: {}", e.getMessage());
+        }
+
+        return results;
+    }
+    
+    private List<Map<String, Object>> performLegacySearch(String query, String ragNamespace,
+                                                            int topK, double threshold) {
+        List<Map<String, Object>> results = new ArrayList<>();
+        
         try {
             int searchTopK = Math.max(topK * 3, 15);
             
@@ -337,22 +401,16 @@ public class RagService {
             results = scoredResults.stream()
                     .limit(topK)
                     .collect(java.util.stream.Collectors.toList());
-
-            if (enableRerank && !results.isEmpty()) {
-                results = rerankerService.rerank(query, results, topK);
-            }
-
+            
             for (Map<String, Object> result : results) {
                 result.remove("keywordScore");
                 result.remove("combinedScore");
             }
-
-            saveToCache(cacheKey, results);
-
+            
         } catch (Exception e) {
-            log.error("检索失败: {}", e.getMessage());
+            log.error("传统检索失败: {}", e.getMessage());
         }
-
+        
         return results;
     }
     
@@ -697,6 +755,13 @@ public class RagService {
             List<String> vectorIds = getVectorIds(documentId);
             if (vectorIds != null && !vectorIds.isEmpty()) {
                 vectorStore.delete(vectorIds);
+                
+                if (hybridRetrievalService != null) {
+                    for (String id : vectorIds) {
+                        hybridRetrievalService.removeDocument(id);
+                    }
+                }
+                
                 deleteVectorIds(documentId);
             }
             

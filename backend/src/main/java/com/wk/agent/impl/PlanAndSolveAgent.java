@@ -2,10 +2,16 @@ package com.wk.agent.impl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wk.agent.advisor.MyLoggerAdvisor;
 import com.wk.agent.core.AbstractAgent;
 import com.wk.agent.core.AgentResult;
 import com.wk.agent.core.AgentStatus;
 import com.wk.agent.core.AgentTask;
+import com.wk.agent.entity.AgentConfig;
+import com.wk.agent.factory.DynamicChatClientFactory;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,6 +28,9 @@ public class PlanAndSolveAgent extends AbstractAgent {
     private String plannerPrompt;
     private String executorPrompt;
     private boolean useSimpleMode = false;
+    private final ChatMemory chatMemory;
+    private final DynamicChatClientFactory dynamicChatClientFactory;
+    private final Long modelConfigId;
     
     private static final String DEFAULT_PLANNER_PROMPT = """
         你是一个顶级的AI规划专家。你的任务是将用户提出的复杂问题分解成一个由多个简单步骤组成的行动计划。
@@ -56,12 +65,15 @@ public class PlanAndSolveAgent extends AbstractAgent {
         请仅输出针对"当前步骤"的回答:
         """;
     
-    public PlanAndSolveAgent(String id, String name, String description) {
+    public PlanAndSolveAgent(String id, String name, String description, AgentConfig config, DynamicChatClientFactory dynamicChatClientFactory, ChatMemory chatMemory) {
         super(id, name, description);
         this.plans = new ArrayList<>();
         this.executionResults = new ArrayList<>();
         this.plannerPrompt = DEFAULT_PLANNER_PROMPT;
         this.executorPrompt = DEFAULT_EXECUTOR_PROMPT;
+        this.chatMemory = chatMemory;
+        this.dynamicChatClientFactory = dynamicChatClientFactory;
+        this.modelConfigId = config.getModelConfigId();
     }
     
     public void setCustomPrompts(String plannerPrompt, String executorPrompt) {
@@ -85,6 +97,11 @@ public class PlanAndSolveAgent extends AbstractAgent {
     public void initialize() {
         log.info("初始化PlanAndSolveAgent: {} ({})", name, id);
         setStatus(AgentStatus.RUNNING);
+        if (this.modelConfigId != null) {
+            setChatModel(this.dynamicChatClientFactory.createChatModel(this.modelConfigId));
+        } else {
+            log.warn("modelConfigId为null，无法初始化chatModel，请确保AgentConfig中设置了modelConfigId");
+        }
         log.info("PlanAndSolveAgent初始化完成: {} ({})", name, id);
     }
     
@@ -93,11 +110,6 @@ public class PlanAndSolveAgent extends AbstractAgent {
         log.info("执行PlanAndSolveAgent任务: {} ({})", name, id);
         log.info("任务内容: {}", task.getTaskContent());
         log.info("使用模式: {}", useSimpleMode ? "简单模式" : "完整模式");
-        
-        if (chatClient == null) {
-            log.error("PlanAndSolveAgent聊天客户端未初始化: {} ({})", name, id);
-            return new AgentResult("聊天客户端未初始化", false);
-        }
         
         try {
             resetHistory();
@@ -161,11 +173,7 @@ public class PlanAndSolveAgent extends AbstractAgent {
                 log.info("使用温度参数: {}", temperature);
             }
             
-            String response = chatClient.prompt()
-                .user(prompt)
-                .options(optionsBuilder.build())
-                .call()
-                .content();
+            String response = chatClientCall(optionsBuilder.build(), prompt);
             
             log.info("规划器响应: {}", response);
             
@@ -288,11 +296,7 @@ public class PlanAndSolveAgent extends AbstractAgent {
                 log.info("使用温度参数: {}", temperature);
             }
             
-            String response = chatClient.prompt()
-                .user(prompt)
-                .options(optionsBuilder.build())
-                .call()
-                .content();
+            String response = chatClientCall(optionsBuilder.build(), prompt);
             
             return response;
         } catch (Exception e) {
@@ -336,17 +340,10 @@ public class PlanAndSolveAgent extends AbstractAgent {
         
         String response;
         if (temperature != null) {
-            response = chatClient.prompt()
-                .user(prompt)
-                .options(org.springframework.ai.openai.OpenAiChatOptions.builder().temperature(temperature).build())
-                .call()
-                .content();
+            response = chatClientCall(org.springframework.ai.openai.OpenAiChatOptions.builder().temperature(temperature).build(), prompt);
             log.info("使用温度参数: {}", temperature);
         } else {
-            response = chatClient.prompt()
-                .user(prompt)
-                .call()
-                .content();
+            response = chatClientCall(org.springframework.ai.openai.OpenAiChatOptions.builder().build(), prompt);
         }
         
         log.info("执行器响应: {}", response.substring(0, Math.min(100, response.length())) + "...");
@@ -370,11 +367,7 @@ public class PlanAndSolveAgent extends AbstractAgent {
                 log.info("使用温度参数: {}", temperature);
             }
             
-            String response = chatClient.prompt()
-                .user(prompt)
-                .options(optionsBuilder.build())
-                .call()
-                .content();
+            String response = chatClientCall(optionsBuilder.build(), prompt);
             
             log.info("问题解决成功");
             return new AgentResult(response, true);
@@ -397,5 +390,24 @@ public class PlanAndSolveAgent extends AbstractAgent {
     
     public List<String> getExecutionResults() {
         return executionResults;
+    }
+    
+    private String chatClientCall(org.springframework.ai.openai.OpenAiChatOptions options, String message) {
+        if (chatModel == null) {
+            throw new IllegalStateException("chatModel未初始化，请确保AgentConfig中设置了modelConfigId");
+        }
+        return ChatClient.builder(chatModel)
+                .defaultAdvisors(
+                        MessageChatMemoryAdvisor.builder(chatMemory).build(),
+                        MyLoggerAdvisor.builder()
+                                .showAvailableTools(true)
+                                .showSystemMessage(true)
+                                .build())
+                .build()
+                .prompt()
+                .user(message)
+                .options(options)
+                .call()
+                .content();
     }
 }

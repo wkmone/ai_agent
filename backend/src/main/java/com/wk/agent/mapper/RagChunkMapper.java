@@ -41,4 +41,9 @@ public interface RagChunkMapper extends BaseMapper<RagChunk> {
 
     @Delete("DELETE FROM rag_chunk WHERE knowledge_base_id = #{knowledgeBaseId}")
     void deleteByKnowledgeBaseId(@Param("knowledgeBaseId") Long knowledgeBaseId);
+    
+    @Select("SELECT * FROM rag_chunk WHERE document_id = #{documentId} AND chunk_index >= #{startIndex} AND chunk_index <= #{endIndex} ORDER BY chunk_index")
+    List<RagChunk> findByDocumentIdAndIndexRange(@Param("documentId") String documentId, 
+                                                    @Param("startIndex") int startIndex, 
+                                                    @Param("endIndex") int endIndex);
 }

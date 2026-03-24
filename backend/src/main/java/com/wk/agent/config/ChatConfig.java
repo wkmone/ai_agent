@@ -2,6 +2,7 @@ package com.wk.agent.config;
 
 import com.wk.agent.advisor.MyLoggerAdvisor;
 import com.wk.agent.core.AgentFactory;
+import com.wk.agent.mcp.McpToolRegistry;
 import jakarta.annotation.Resource;
 import org.springaicommunity.agent.tools.FileSystemTools;
 import org.springaicommunity.agent.tools.ShellTools;
@@ -46,7 +47,7 @@ public class ChatConfig {
     }
 
     @Bean
-    public AgentFactory agentFactory(org.springframework.context.ApplicationContext applicationContext, com.wk.agent.service.ModelConfigService modelConfigService) {
-        return new AgentFactory(applicationContext, modelConfigService);
+    public AgentFactory agentFactory(org.springframework.context.ApplicationContext applicationContext, com.wk.agent.service.ModelConfigService modelConfigService, McpToolRegistry mcpToolRegistry) {
+        return new AgentFactory(applicationContext, modelConfigService, mcpToolRegistry);
     }
 }

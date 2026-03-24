@@ -321,35 +321,79 @@ public class RagController {
                 return ResponseEntity.badRequest().body(Map.of("success", false, "error", "无法读取文档内容"));
             }
 
-            RagProcessingTask task = RagProcessingTask.builder()
-                .taskId(taskId)
-                .ragNamespace(ragNamespace)
-                .sourcePath(originalFilename)
-                .fileContent(content)
-                .fileName(originalFilename)
-                .fileType(file.getContentType())
-                .chunkSize(chunkSize)
-                .overlapSize(overlapSize)
-                .createdAt(System.currentTimeMillis())
-                .build();
+            // 检查RabbitMQ连接状态
+            boolean isRabbitMQAvailable = messageProducer.isRabbitMQAvailable();
 
-            RagProcessingProgress initialProgress = RagProcessingProgress.builder()
-                .taskId(taskId)
-                .status(RagProcessingProgress.Status.PENDING)
-                .message("任务已提交，等待处理")
-                .progress(0.0)
-                .timestamp(System.currentTimeMillis())
-                .build();
-            progressService.saveProgress(initialProgress);
+            if (isRabbitMQAvailable) {
+                // RabbitMQ可用，使用异步处理
+                RagProcessingTask task = RagProcessingTask.builder()
+                    .taskId(taskId)
+                    .ragNamespace(ragNamespace)
+                    .sourcePath(originalFilename)
+                    .fileContent(content)
+                    .fileName(originalFilename)
+                    .fileType(file.getContentType())
+                    .chunkSize(chunkSize)
+                    .overlapSize(overlapSize)
+                    .createdAt(System.currentTimeMillis())
+                    .build();
 
-            messageProducer.sendRagProcessingTask(task);
+                RagProcessingProgress initialProgress = RagProcessingProgress.builder()
+                    .taskId(taskId)
+                    .status(RagProcessingProgress.Status.PENDING)
+                    .message("任务已提交，等待处理")
+                    .progress(0.0)
+                    .timestamp(System.currentTimeMillis())
+                    .build();
+                progressService.saveProgress(initialProgress);
 
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("success", true);
-            result.put("taskId", taskId);
-            result.put("fileName", originalFilename);
-            result.put("message", "文档已提交，正在异步处理中");
-            return ResponseEntity.ok(result);
+                messageProducer.sendRagProcessingTask(task);
+
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("success", true);
+                result.put("taskId", taskId);
+                result.put("fileName", originalFilename);
+                result.put("message", "文档已提交，正在异步处理中");
+                return ResponseEntity.ok(result);
+            } else {
+                // RabbitMQ不可用，使用同步处理作为回退
+                Map<String, Object> syncResult = ragService.addMultipartFile(file, ragNamespace, chunkSize, overlapSize);
+                
+                if (Boolean.TRUE.equals(syncResult.get("success"))) {
+                    // 更新进度为完成
+                    RagProcessingProgress completedProgress = RagProcessingProgress.builder()
+                        .taskId(taskId)
+                        .status(RagProcessingProgress.Status.COMPLETED)
+                        .message("文档处理完成")
+                        .progress(100.0)
+                        .timestamp(System.currentTimeMillis())
+                        .build();
+                    progressService.saveProgress(completedProgress);
+
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("success", true);
+                    result.put("taskId", taskId);
+                    result.put("fileName", originalFilename);
+                    result.put("message", "RabbitMQ不可用，已使用同步处理完成");
+                    result.putAll(syncResult);
+                    return ResponseEntity.ok(result);
+                } else {
+                    // 同步处理失败
+                    RagProcessingProgress failedProgress = RagProcessingProgress.builder()
+                        .taskId(taskId)
+                        .status(RagProcessingProgress.Status.FAILED)
+                        .message("文档处理失败: " + syncResult.get("error"))
+                        .progress(0.0)
+                        .timestamp(System.currentTimeMillis())
+                        .build();
+                    progressService.saveProgress(failedProgress);
+
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "处理文档失败: " + syncResult.get("error")
+                    ));
+                }
+            }
 
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -387,36 +431,81 @@ public class RagController {
                 return ResponseEntity.badRequest().body(Map.of("success", false, "error", "无法读取文档内容"));
             }
 
-            RagProcessingTask task = RagProcessingTask.builder()
-                .taskId(taskId)
-                .knowledgeBaseId(knowledgeBaseId)
-                .sourcePath(originalFilename)
-                .fileContent(content)
-                .fileName(originalFilename)
-                .fileType(file.getContentType())
-                .chunkSize(chunkSize)
-                .overlapSize(overlapSize)
-                .createdAt(System.currentTimeMillis())
-                .build();
+            // 检查RabbitMQ连接状态
+            boolean isRabbitMQAvailable = messageProducer.isRabbitMQAvailable();
 
-            RagProcessingProgress initialProgress = RagProcessingProgress.builder()
-                .taskId(taskId)
-                .status(RagProcessingProgress.Status.PENDING)
-                .message("任务已提交，等待处理")
-                .progress(0.0)
-                .timestamp(System.currentTimeMillis())
-                .build();
-            progressService.saveProgress(initialProgress);
+            if (isRabbitMQAvailable) {
+                // RabbitMQ可用，使用异步处理
+                RagProcessingTask task = RagProcessingTask.builder()
+                    .taskId(taskId)
+                    .knowledgeBaseId(knowledgeBaseId)
+                    .sourcePath(originalFilename)
+                    .fileContent(content)
+                    .fileName(originalFilename)
+                    .fileType(file.getContentType())
+                    .chunkSize(chunkSize)
+                    .overlapSize(overlapSize)
+                    .createdAt(System.currentTimeMillis())
+                    .build();
 
-            messageProducer.sendRagProcessingTask(task);
+                RagProcessingProgress initialProgress = RagProcessingProgress.builder()
+                    .taskId(taskId)
+                    .status(RagProcessingProgress.Status.PENDING)
+                    .message("任务已提交，等待处理")
+                    .progress(0.0)
+                    .timestamp(System.currentTimeMillis())
+                    .build();
+                progressService.saveProgress(initialProgress);
 
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("success", true);
-            result.put("taskId", taskId);
-            result.put("fileName", originalFilename);
-            result.put("knowledgeBaseId", knowledgeBaseId);
-            result.put("message", "文档已提交，正在异步处理中");
-            return ResponseEntity.ok(result);
+                messageProducer.sendRagProcessingTask(task);
+
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("success", true);
+                result.put("taskId", taskId);
+                result.put("fileName", originalFilename);
+                result.put("knowledgeBaseId", knowledgeBaseId);
+                result.put("message", "文档已提交，正在异步处理中");
+                return ResponseEntity.ok(result);
+            } else {
+                // RabbitMQ不可用，使用同步处理作为回退
+                Map<String, Object> syncResult = ragService.addMultipartFileWithKnowledgeBase(file, knowledgeBaseId, chunkSize, overlapSize);
+                
+                if (Boolean.TRUE.equals(syncResult.get("success"))) {
+                    // 更新进度为完成
+                    RagProcessingProgress completedProgress = RagProcessingProgress.builder()
+                        .taskId(taskId)
+                        .status(RagProcessingProgress.Status.COMPLETED)
+                        .message("文档处理完成")
+                        .progress(100.0)
+                        .timestamp(System.currentTimeMillis())
+                        .build();
+                    progressService.saveProgress(completedProgress);
+
+                    Map<String, Object> result = new LinkedHashMap<>();
+                    result.put("success", true);
+                    result.put("taskId", taskId);
+                    result.put("fileName", originalFilename);
+                    result.put("knowledgeBaseId", knowledgeBaseId);
+                    result.put("message", "RabbitMQ不可用，已使用同步处理完成");
+                    result.putAll(syncResult);
+                    return ResponseEntity.ok(result);
+                } else {
+                    // 同步处理失败
+                    RagProcessingProgress failedProgress = RagProcessingProgress.builder()
+                        .taskId(taskId)
+                        .status(RagProcessingProgress.Status.FAILED)
+                        .message("文档处理失败: " + syncResult.get("error"))
+                        .progress(0.0)
+                        .timestamp(System.currentTimeMillis())
+                        .build();
+                    progressService.saveProgress(failedProgress);
+
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "处理文档失败: " + syncResult.get("error")
+                    ));
+                }
+            }
 
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of(

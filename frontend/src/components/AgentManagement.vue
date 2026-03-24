@@ -64,8 +64,8 @@
               <el-descriptions-item label="描述" :span="2">
                 {{ selectedAgentConfig?.description || '暂无描述' }}
               </el-descriptions-item>
-              <el-descriptions-item label="模型名称">
-                {{ selectedAgentConfig?.modelName }}
+              <el-descriptions-item label="模型配置">
+                {{ getModelConfigName(selectedAgentConfig?.modelConfigId) || '未选择' }}
               </el-descriptions-item>
               <el-descriptions-item label="Temperature">
                 {{ selectedAgentConfig?.temperature }}
@@ -116,8 +116,15 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="模型名称" required>
-          <el-input v-model="formData.modelName" placeholder="例如：gpt-4" class="styled-input" />
+        <el-form-item label="模型配置" required>
+          <el-select v-model="formData.modelConfigId" placeholder="请选择模型配置" style="width: 100%" class="styled-select">
+            <el-option
+              v-for="mc in modelConfigs"
+              :key="mc.id"
+              :label="`${mc.name} (${mc.modelName})`"
+              :value="mc.id"
+            />
+          </el-select>
         </el-form-item>
 
         <el-form-item label="Temperature">
@@ -159,29 +166,42 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, MoreFilled } from '@element-plus/icons-vue'
-import { agentConfigApi, knowledgeBaseApi } from '../services/api'
+import { agentConfigApi, knowledgeBaseApi, modelConfigApi } from '../services/api'
 
 interface AgentConfig {
-  id: number
+  id: string
   name: string
   description?: string
   baseAgentType: string
-  modelName: string
+  modelName?: string
+  modelConfigId?: string
   temperature: number
-  knowledgeBaseId?: number
+  knowledgeBaseId?: string
   tools?: string
   createdAt: string
   updatedAt: string
 }
 
 interface KnowledgeBase {
-  id: number
+  id: string
   name: string
   description?: string
 }
 
+interface ModelConfig {
+  id: string
+  name: string
+  modelName: string
+  baseUrl: string
+  apiKey: string
+  temperature?: number
+  enabled: boolean
+  isDefault: boolean
+}
+
 const agentConfigs = ref<AgentConfig[]>([])
 const knowledgeBases = ref<KnowledgeBase[]>([])
+const modelConfigs = ref<ModelConfig[]>([])
 const selectedAgentConfig = ref<AgentConfig | null>(null)
 const dialogVisible = ref(false)
 const isEditing = ref(false)
@@ -189,7 +209,7 @@ const formData = ref<Partial<AgentConfig>>({
   name: '',
   description: '',
   baseAgentType: '',
-  modelName: '',
+  modelConfigId: undefined,
   temperature: 0.7,
   knowledgeBaseId: undefined,
   tools: ''
@@ -212,10 +232,16 @@ function getBaseAgentTypeName(type?: string): string {
   return baseAgentTypeNames[type] || type
 }
 
-function getKnowledgeBaseName(id?: number): string | undefined {
+function getKnowledgeBaseName(id?: string): string | undefined {
   if (!id) return undefined
   const kb = knowledgeBases.value.find(k => k.id === id)
   return kb?.name
+}
+
+function getModelConfigName(id?: string): string | undefined {
+  if (!id) return undefined
+  const mc = modelConfigs.value.find(m => m.id === id)
+  return mc ? `${mc.name} (${mc.modelName})` : undefined
 }
 
 function formatDate(dateStr?: string): string {
@@ -243,6 +269,21 @@ async function loadKnowledgeBases() {
   }
 }
 
+async function loadModelConfigs() {
+  try {
+    const data = await modelConfigApi.getEnabledConfigs()
+    // 强制将 ID 转换为字符串，避免 JavaScript 精度丢失
+    modelConfigs.value = Array.isArray(data) ? data.map(mc => ({
+      ...mc,
+      id: mc.id.toString()
+    })) : []
+    console.log('Model configs loaded with string IDs:', modelConfigs.value)
+  } catch (error) {
+    console.error('Failed to load model configs:', error)
+    modelConfigs.value = []
+  }
+}
+
 function selectAgentConfig(agent: AgentConfig) {
   selectedAgentConfig.value = agent
 }
@@ -253,7 +294,7 @@ function showCreateDialog() {
     name: '',
     description: '',
     baseAgentType: '',
-    modelName: '',
+    modelConfigId: undefined,
     temperature: 0.7,
     knowledgeBaseId: undefined,
     tools: ''
@@ -264,22 +305,31 @@ function showCreateDialog() {
 function showEditDialog() {
   if (!selectedAgentConfig.value) return
   isEditing.value = true
-  formData.value = { ...selectedAgentConfig.value }
+  const { modelName, ...rest } = selectedAgentConfig.value
+  formData.value = rest
   dialogVisible.value = true
 }
 
 async function handleSave() {
-  if (!formData.value.name || !formData.value.baseAgentType || !formData.value.modelName) {
+  if (!formData.value.name || !formData.value.baseAgentType || !formData.value.modelConfigId) {
     ElMessage.warning('请填写必填字段')
     return
   }
 
   try {
+    const dataToSave = { ...formData.value }
+    delete dataToSave.modelName
+    
+    console.log('formData.value:', formData.value)
+    console.log('dataToSave:', dataToSave)
+    console.log('dataToSave.modelConfigId:', dataToSave.modelConfigId)
+    console.log('dataToSave.modelName:', dataToSave.modelName)
+    
     if (isEditing.value && formData.value.id) {
-      await agentConfigApi.updateAgentConfig(formData.value.id, formData.value)
+      await agentConfigApi.updateAgentConfig(formData.value.id, dataToSave)
       ElMessage.success('更新成功')
     } else {
-      await agentConfigApi.createAgentConfig(formData.value)
+      await agentConfigApi.createAgentConfig(dataToSave)
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
@@ -319,6 +369,7 @@ async function handleAgentCommand(command: string, agent: AgentConfig) {
 onMounted(async () => {
   await loadAgentConfigs()
   await loadKnowledgeBases()
+  await loadModelConfigs()
 })
 </script>
 

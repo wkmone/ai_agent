@@ -213,7 +213,7 @@ async function addServer() {
   }
 }
 
-async function deleteServer(id: number) {
+async function deleteServer(id: string) {
   try {
     await ElMessageBox.confirm('确定要删除此 MCP 服务器吗？', '提示', {
       confirmButtonText: '确定',
@@ -225,32 +225,32 @@ async function deleteServer(id: number) {
     loadServers()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(`删除失败: ${error.message}`)
+      ElMessage.error(`删除失败：${error.message}`)
     }
   }
 }
 
-async function enableServer(id: number) {
+async function enableServer(id: string) {
   try {
     await mcpApi.enableMcpServer(id)
     ElMessage.success('已启用')
     loadServers()
   } catch (error: any) {
-    ElMessage.error(`启用失败: ${error.message}`)
+    ElMessage.error(`启用失败：${error.message}`)
   }
 }
 
-async function disableServer(id: number) {
+async function disableServer(id: string) {
   try {
     await mcpApi.disableMcpServer(id)
     ElMessage.success('已禁用')
     loadServers()
   } catch (error: any) {
-    ElMessage.error(`禁用失败: ${error.message}`)
+    ElMessage.error(`禁用失败：${error.message}`)
   }
 }
 
-async function viewTools(id: number) {
+async function viewTools(id: string) {
   tools.value = []
   toolsLoading.value = true
   showToolsDialog.value = true
@@ -264,7 +264,7 @@ async function viewTools(id: number) {
   }
 }
 
-async function reconnectServer(id: number) {
+async function reconnectServer(id: string) {
   try {
     await mcpApi.reconnectMcpServer(id)
     ElMessage.success('重连成功，正在刷新工具列表...')

@@ -186,19 +186,19 @@ async function loadGraphData() {
   loading.value = true
   try {
     const [graphResponse, statsResponse] = await Promise.all([
-      knowledgeGraphApi.getFullGraph({ nodeLimit: 100, edgeLimit: 200 }),
+      knowledgeGraphApi.getFullGraph(),
       knowledgeGraphApi.getStats(),
     ])
     nodes.value = graphResponse.nodes || []
     edges.value = graphResponse.edges || []
-    stats.value = statsResponse
+    stats.value = statsResponse.stats || statsResponse
 
     const positions = new Map<string, { x: number; y: number }>()
     const centerX = 400
     const centerY = 300
     
     nodes.value.forEach((node, index) => {
-      const angle = (2 * Math.PI * index) / nodes.value.length
+      const angle = (2 * Math.PI * index) / (nodes.value.length || 1)
       const radius = 150 + Math.random() * 100
       positions.set(node.id, {
         x: centerX + radius * Math.cos(angle),
@@ -271,7 +271,7 @@ function drawGraph() {
 async function handleSearch() {
   if (!searchKeyword.value.trim()) return
   try {
-    const results = await knowledgeGraphApi.searchNodes(searchKeyword.value)
+    const results = await knowledgeGraphApi.searchNodes()
     if (results.length > 0) {
       const firstResult = results[0]
       selectedNode.value = {

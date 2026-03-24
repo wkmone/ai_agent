@@ -5,6 +5,7 @@ import com.wk.agent.entity.AgentConfig;
 import com.wk.agent.entity.ModelConfig;
 import com.wk.agent.factory.DynamicChatClientFactory;
 import com.wk.agent.impl.*;
+import com.wk.agent.mcp.McpToolRegistry;
 import com.wk.agent.service.ModelConfigService;
 import com.wk.agent.service.MultiLayerMemoryManager;
 import com.wk.agent.service.RagService;
@@ -19,6 +20,8 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -30,11 +33,13 @@ public class AgentFactory {
 
     private final ApplicationContext applicationContext;
     private final ModelConfigService modelConfigService;
+    private final McpToolRegistry mcpToolRegistry;
     private final Map<Long, AbstractAgent> agentCache = new ConcurrentHashMap<>();
 
-    public AgentFactory(ApplicationContext applicationContext, ModelConfigService modelConfigService) {
+    public AgentFactory(ApplicationContext applicationContext, ModelConfigService modelConfigService, McpToolRegistry mcpToolRegistry) {
         this.applicationContext = applicationContext;
         this.modelConfigService = modelConfigService;
+        this.mcpToolRegistry = mcpToolRegistry;
     }
 
     public AbstractAgent createAgent(AgentConfig config) {
@@ -58,10 +63,19 @@ public class AgentFactory {
             }
             
             try {
-                ToolCallback[] toolCallbacks = applicationContext.getBeansOfType(ToolCallback.class)
-                    .values()
-                    .toArray(new ToolCallback[0]);
-                agent.toolCallbacks = toolCallbacks;
+                List<ToolCallback> allToolCallbacks = new ArrayList<>();
+                
+                // 获取所有 Spring Bean 中的 ToolCallback
+                allToolCallbacks.addAll(applicationContext.getBeansOfType(ToolCallback.class).values());
+                
+                // 获取 MCP 工具
+                if (mcpToolRegistry != null && mcpToolRegistry.hasTools()) {
+                    allToolCallbacks.addAll(mcpToolRegistry.getToolCallbacks());
+                    log.info("添加了 {} 个 MCP 工具", mcpToolRegistry.getToolCallbacks().size());
+                }
+                
+                agent.toolCallbacks = allToolCallbacks.toArray(new ToolCallback[0]);
+                log.info("总共添加了 {} 个工具", agent.toolCallbacks.length);
             } catch (Exception e) {
                 log.warn("无法注入ToolCallbacks: {}", e.getMessage());
             }
@@ -95,10 +109,10 @@ public class AgentFactory {
 
         return switch (baseAgentType) {
             case "SimpleAgent" -> new SimpleAgent(id, name, description, config, dynamicChatClientFactory, chatMemory);
-            case "ReActAgent" -> new ReActAgent(id, name, description);
-            case "ReflectionAgent" -> new ReflectionAgent(id, name, description);
-            case "PlanAndSolveAgent" -> new PlanAndSolveAgent(id, name, description);
-            case "FunctionCallAgent" -> new FunctionCallAgent(id, name, description);
+            case "ReActAgent" -> new ReActAgent(id, name, description, config, dynamicChatClientFactory, chatMemory);
+            case "ReflectionAgent" -> new ReflectionAgent(id, name, description, config, dynamicChatClientFactory, chatMemory);
+            case "PlanAndSolveAgent" -> new PlanAndSolveAgent(id, name, description, config, dynamicChatClientFactory, chatMemory);
+            case "FunctionCallAgent" -> new FunctionCallAgent(id, name, description, config, dynamicChatClientFactory, chatMemory);
             default -> {
                 log.warn("未知的Agent类型: {}, 使用SimpleAgent", baseAgentType);
                 yield new SimpleAgent(id, name, description, config, dynamicChatClientFactory, chatMemory);

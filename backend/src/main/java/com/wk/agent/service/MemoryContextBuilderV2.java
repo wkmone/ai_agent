@@ -24,6 +24,9 @@ public class MemoryContextBuilderV2 {
     @Autowired(required = false)
     private VectorSearchService vectorSearchService;
 
+    @Autowired(required = false)
+    private KnowledgeGraphEnhancer knowledgeGraphEnhancer;
+
     public String buildContextPrompt(String sessionId, String userQuery) {
         log.debug("构建记忆上下文: sessionId={}, query={}", sessionId, userQuery);
 
@@ -99,6 +102,18 @@ public class MemoryContextBuilderV2 {
                 }
             } catch (Exception e) {
                 log.warn("向量搜索失败，跳过语义相关记忆: {}", e.getMessage());
+            }
+        }
+
+        if (knowledgeGraphEnhancer != null) {
+            try {
+                String kgContext = knowledgeGraphEnhancer.enhanceContext(sessionId, userQuery);
+                if (kgContext != null && !kgContext.isEmpty()) {
+                    context.append(kgContext);
+                    log.debug("已添加知识图谱上下文");
+                }
+            } catch (Exception e) {
+                log.warn("知识图谱增强失败，跳过: {}", e.getMessage());
             }
         }
 

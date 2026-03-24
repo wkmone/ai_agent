@@ -24,6 +24,7 @@
           <el-menu-item index="3">记忆管理</el-menu-item>
           <el-menu-item index="4">RAG知识库</el-menu-item>
           <el-menu-item index="5">MCP服务器</el-menu-item>
+          <el-menu-item index="6">知识图谱</el-menu-item>
         </el-menu>
       </div>
     </el-header>
@@ -143,22 +144,33 @@
         <el-card v-if="activeTab === '5'" class="management-card">
           <McpServerManagement />
         </el-card>
+
+        <el-card v-if="activeTab === '6'" class="management-card">
+          <template #header>
+            <div class="card-header">
+              <span class="card-title">知识图谱</span>
+            </div>
+          </template>
+          <p class="description">可视化管理和探索知识图谱，查看概念和关系</p>
+          <KnowledgeGraphVisualization />
+        </el-card>
       </div>
     </el-main>
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { modelConfigApi } from './services/api'
 import MemoryManagement from './components/MemoryManagement.vue'
 import RagManagement from './components/RagManagement.vue'
 import McpServerManagement from './components/McpServerManagement.vue'
 import ChatAssistant from './components/ChatAssistant.vue'
+import KnowledgeGraphVisualization from './components/KnowledgeGraphVisualization.vue'
 
 interface ModelConfig {
-  id?: number
+  id?: string
   name: string
   provider: string
   modelName: string
@@ -175,7 +187,7 @@ const modelConfigs = ref<ModelConfig[]>([])
 const modelFormRef = ref()
 const loadingModelConfigs = ref(false)
 const savingModelConfig = ref(false)
-const editingModelConfigId = ref<number | null>(null)
+const editingModelConfigId = ref<string | null>(null)
 
 const modelForm = reactive<ModelConfig>({
   name: '',
@@ -266,7 +278,7 @@ async function handleSaveModelConfig() {
   }
 }
 
-async function setDefaultModelConfig(id: number) {
+async function setDefaultModelConfig(id: string) {
   try {
     await modelConfigApi.setDefaultConfig(id)
     ElMessage.success('设置默认配置成功')
@@ -277,7 +289,7 @@ async function setDefaultModelConfig(id: number) {
   }
 }
 
-async function deleteModelConfig(id: number) {
+async function deleteModelConfig(id: string) {
   try {
     await ElMessageBox.confirm('确定要删除这个模型配置吗？', '提示', {
       confirmButtonText: '确定',

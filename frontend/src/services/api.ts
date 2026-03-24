@@ -2,11 +2,25 @@ import axios from 'axios'
 
 const API_BASE_URL = 'http://localhost:8080/api/v1'
 
+// 自定义响应转换器，处理大数字
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  transformResponse: [function (data) {
+    try {
+      // 在 JSON 解析之前，使用正则表达式将大数字转换为字符串
+      // 匹配所有超过 15 位的数字（超过 JavaScript Number 安全范围）
+      const processedData = data.replace(/:\s*(\d{16,})\s*(,|})/g, ': "$1"$2')
+      console.log('Original data:', data)
+      console.log('Processed data:', processedData)
+      return JSON.parse(processedData)
+    } catch (e) {
+      console.error('Error parsing JSON:', e)
+      return data
+    }
+  }]
 })
 
 export const chatApi = {
@@ -57,9 +71,9 @@ export const modelConfigApi = {
   getDefaultConfig: () => api.get<any>('/model-config/default').then(res => res.data),
   getEnabledConfigs: () => api.get<any[]>('/model-config/enabled').then(res => res.data),
   createConfig: (config: any) => api.post<any>('/model-config', config).then(res => res.data),
-  updateConfig: (id: number, config: any) => api.put<boolean>(`/model-config/${id}`, config).then(res => res.data),
-  deleteConfig: (id: number) => api.delete<boolean>(`/model-config/${id}`).then(res => res.data),
-  setDefaultConfig: (id: number) => api.put<boolean>(`/model-config/${id}/default`).then(res => res.data),
+  updateConfig: (id: string, config: any) => api.put<boolean>(`/model-config/${id}`, config).then(res => res.data),
+  deleteConfig: (id: string) => api.delete<boolean>(`/model-config/${id}`).then(res => res.data),
+  setDefaultConfig: (id: string) => api.put<boolean>(`/model-config/${id}/default`).then(res => res.data),
 }
 
 export const ragApi = {
@@ -133,19 +147,19 @@ export const ragApi = {
     rerankType?: string
   }) => api.post<any[]>('/rag/search-rerank', params).then(res => res.data),
 
-  addTextToKnowledgeBase: (text: string, knowledgeBaseId: number, documentId?: string, chunkSize?: number, overlapSize?: number) => {
+  addTextToKnowledgeBase: (text: string, knowledgeBaseId: string, documentId?: string, chunkSize?: number, overlapSize?: number) => {
     const queryParams = new URLSearchParams()
-    queryParams.append('knowledgeBaseId', knowledgeBaseId.toString())
+    queryParams.append('knowledgeBaseId', knowledgeBaseId)
     if (documentId) queryParams.append('documentId', documentId)
     if (chunkSize) queryParams.append('chunkSize', chunkSize.toString())
     if (overlapSize) queryParams.append('overlapSize', overlapSize.toString())
     return api.post<any>(`/rag/text/kb?${queryParams.toString()}`, text).then(res => res.data)
   },
 
-  uploadDocumentToKnowledgeBase: (file: File, knowledgeBaseId: number, chunkSize?: number, overlapSize?: number) => {
+  uploadDocumentToKnowledgeBase: (file: File, knowledgeBaseId: string, chunkSize?: number, overlapSize?: number) => {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('knowledgeBaseId', knowledgeBaseId.toString())
+    formData.append('knowledgeBaseId', knowledgeBaseId)
     if (chunkSize) formData.append('chunkSize', chunkSize.toString())
     if (overlapSize) formData.append('overlapSize', overlapSize.toString())
     return api.post<any>('/rag/document/kb', formData, {
@@ -153,27 +167,27 @@ export const ragApi = {
     }).then(res => res.data)
   },
 
-  searchKnowledgeBase: (params: { query: string; knowledgeBaseId: number; topK?: number; threshold?: number; rerank?: boolean }) => {
+  searchKnowledgeBase: (params: { query: string; knowledgeBaseId: string; topK?: number; threshold?: number; rerank?: boolean }) => {
     const queryParams = new URLSearchParams()
     queryParams.append('query', params.query)
-    queryParams.append('knowledgeBaseId', params.knowledgeBaseId.toString())
+    queryParams.append('knowledgeBaseId', params.knowledgeBaseId)
     if (params.topK) queryParams.append('topK', params.topK.toString())
     if (params.threshold) queryParams.append('threshold', params.threshold.toString())
     if (params.rerank) queryParams.append('rerank', params.rerank.toString())
     return api.get<any[]>(`/rag/search/kb?${queryParams.toString()}`).then(res => res.data)
   },
 
-  askKnowledgeBase: (params: { question: string; knowledgeBaseId: number; topK?: number; threshold?: number; rerank?: boolean }) => {
+  askKnowledgeBase: (params: { question: string; knowledgeBaseId: string; topK?: number; threshold?: number; rerank?: boolean }) => {
     const queryParams = new URLSearchParams()
     queryParams.append('question', params.question)
-    queryParams.append('knowledgeBaseId', params.knowledgeBaseId.toString())
+    queryParams.append('knowledgeBaseId', params.knowledgeBaseId)
     if (params.topK) queryParams.append('topK', params.topK.toString())
     if (params.threshold) queryParams.append('threshold', params.threshold.toString())
     if (params.rerank) queryParams.append('rerank', params.rerank.toString())
-    return api.get<{ question: string; answer: string; knowledgeBaseId: number; success: boolean }>(`/rag/ask/kb?${queryParams.toString()}`).then(res => res.data)
+    return api.get<{ question: string; answer: string; knowledgeBaseId: string; success: boolean }>(`/rag/ask/kb?${queryParams.toString()}`).then(res => res.data)
   },
 
-  getDocumentsFromKnowledgeBase: (knowledgeBaseId: number) => {
+  getDocumentsFromKnowledgeBase: (knowledgeBaseId: string) => {
     return api.get<any[]>(`/rag/documents/kb?knowledgeBaseId=${knowledgeBaseId}`).then(res => res.data)
   },
 
@@ -188,10 +202,10 @@ export const ragApi = {
     }).then(res => res.data)
   },
 
-  uploadDocumentToKnowledgeBaseAsync: (file: File, knowledgeBaseId: number, chunkSize?: number, overlapSize?: number) => {
+  uploadDocumentToKnowledgeBaseAsync: (file: File, knowledgeBaseId: string, chunkSize?: number, overlapSize?: number) => {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('knowledgeBaseId', knowledgeBaseId.toString())
+    formData.append('knowledgeBaseId', knowledgeBaseId)
     if (chunkSize) formData.append('chunkSize', chunkSize.toString())
     if (overlapSize) formData.append('overlapSize', overlapSize.toString())
     return api.post<any>('/rag/document/async/kb', formData, {
@@ -212,9 +226,9 @@ export const ragApi = {
 export const knowledgeBaseApi = {
   getAllKnowledgeBases: () => api.get<any[]>('/knowledge-bases').then(res => res.data),
 
-  getKnowledgeBaseById: (id: number) => api.get<any>(`/knowledge-bases/${id}`).then(res => res.data),
+  getKnowledgeBaseById: (id: string) => api.get<any>(`/knowledge-bases/${id}`).then(res => res.data),
 
-  getKnowledgeBaseStats: (id: number) => api.get<any>(`/knowledge-bases/${id}/stats`).then(res => res.data),
+  getKnowledgeBaseStats: (id: string) => api.get<any>(`/knowledge-bases/${id}/stats`).then(res => res.data),
 
   createKnowledgeBase: (name: string, description?: string, namespace?: string) => {
     const queryParams = new URLSearchParams()
@@ -224,14 +238,14 @@ export const knowledgeBaseApi = {
     return api.post<any>(`/knowledge-bases?${queryParams.toString()}`).then(res => res.data)
   },
 
-  updateKnowledgeBase: (id: number, name?: string, description?: string) => {
+  updateKnowledgeBase: (id: string, name?: string, description?: string) => {
     const queryParams = new URLSearchParams()
     if (name) queryParams.append('name', name)
     if (description) queryParams.append('description', description)
     return api.put<any>(`/knowledge-bases/${id}?${queryParams.toString()}`).then(res => res.data)
   },
 
-  deleteKnowledgeBase: (id: number) => api.delete<any>(`/knowledge-bases/${id}`).then(res => res.data),
+  deleteKnowledgeBase: (id: string) => api.delete<any>(`/knowledge-bases/${id}`).then(res => res.data),
 }
 
 export const memoryApi = {
@@ -309,34 +323,34 @@ export const mcpApi = {
   getMcpServers: () =>
     api.get<any[]>('/mcp/servers').then(res => res.data),
 
-  getMcpServer: (id: number) =>
+  getMcpServer: (id: string) =>
     api.get<any>(`/mcp/servers/${id}`).then(res => res.data),
 
-  getMcpServerTools: (id: number) =>
+  getMcpServerTools: (id: string) =>
     api.get<any[]>(`/mcp/servers/${id}/tools`).then(res => res.data),
 
   getEnabledMcpServers: () =>
     api.get<any[]>('/mcp/servers/enabled').then(res => res.data),
 
-  getMcpServerStatus: (id: number) =>
+  getMcpServerStatus: (id: string) =>
     api.get<any>(`/mcp/servers/${id}/status`).then(res => res.data),
 
   addMcpServer: (server: any) =>
     api.post<any>('/mcp/servers', server).then(res => res.data),
 
-  updateMcpServer: (id: number, server: any) =>
+  updateMcpServer: (id: string, server: any) =>
     api.put<any>(`/mcp/servers/${id}`, server).then(res => res.data),
 
-  deleteMcpServer: (id: number) =>
+  deleteMcpServer: (id: string) =>
     api.delete(`/mcp/servers/${id}`),
 
-  enableMcpServer: (id: number) =>
+  enableMcpServer: (id: string) =>
     api.post(`/mcp/servers/${id}/enable`),
 
-  disableMcpServer: (id: number) =>
+  disableMcpServer: (id: string) =>
     api.post(`/mcp/servers/${id}/disable`),
 
-  reconnectMcpServer: (id: number) =>
+  reconnectMcpServer: (id: string) =>
     api.post(`/mcp/servers/${id}/reconnect`),
 
   reconnectAllMcpServers: () =>
@@ -346,22 +360,34 @@ export const mcpApi = {
 export const agentConfigApi = {
   getAllAgentConfigs: () => api.get<any[]>('/agent-configs').then(res => res.data),
 
-  getAgentConfigById: (id: number) => api.get<any>(`/agent-configs/${id}`).then(res => res.data),
+  getAgentConfigById: (id: string) => api.get<any>(`/agent-configs/${id}`).then(res => res.data),
 
   createAgentConfig: (config: any) => api.post<any>('/agent-configs', config).then(res => res.data.agentConfig),
 
-  updateAgentConfig: (id: number, config: any) => api.put<any>(`/agent-configs/${id}`, config).then(res => res.data.agentConfig),
+  updateAgentConfig: (id: string, config: any) => api.put<any>(`/agent-configs/${id}`, config).then(res => res.data.agentConfig),
 
-  deleteAgentConfig: (id: number) => api.delete<any>(`/agent-configs/${id}`).then(res => res.data.success),
+  deleteAgentConfig: (id: string) => api.delete<any>(`/agent-configs/${id}`).then(res => res.data.success),
 }
 
 export const knowledgeGraphApi = {
-  getGraphData: (kbId: number) => api.get<any>(`/knowledge-graphs/${kbId}/data`).then(res => res.data),
-  getFullGraph: (params: { nodeLimit?: number; edgeLimit?: number }) => api.get<any>('/knowledge-graphs/full', { params }).then(res => res.data),
-  getStats: () => api.get<any>('/knowledge-graphs/stats').then(res => res.data),
-  searchNodes: (keyword: string) => api.get<any>(`/knowledge-graphs/search?keyword=${keyword}`).then(res => res.data),
-  createNode: (nodeData: any) => api.post<any>('/knowledge-graphs/nodes', nodeData).then(res => res.data),
-  deleteNode: (nodeId: string) => api.delete<any>(`/knowledge-graphs/nodes/${nodeId}`).then(res => res.data),
+  getGraphData: (kbId: string) => api.get<any>(`/knowledge-graph/${kbId}/data`).then(res => res.data),
+  getFullGraph: () => {
+    return api.get<any>('/knowledge-graph/full').then(res => res.data)
+  },
+  getStats: (sessionId?: string) => {
+    const queryParams = sessionId ? `?sessionId=${sessionId}` : ''
+    return api.get<any>(`/knowledge-graph/stats${queryParams}`).then(res => res.data)
+  },
+  searchNodes: () => api.get<any>(`/knowledge-graph/concepts`).then(res => res.data),
+  createNode: (nodeData: { name: string; category?: string; definition?: string; sessionId?: string }) => {
+    const params = new URLSearchParams()
+    params.append('name', nodeData.name)
+    if (nodeData.category) params.append('category', nodeData.category)
+    if (nodeData.definition) params.append('definition', nodeData.definition)
+    if (nodeData.sessionId) params.append('sessionId', nodeData.sessionId)
+    return api.post<any>(`/knowledge-graph/concepts?${params.toString()}`).then(res => res.data)
+  },
+  deleteNode: (nodeId: string) => api.delete<any>(`/knowledge-graph/concepts/${nodeId}`).then(res => res.data),
 }
 
 export default api

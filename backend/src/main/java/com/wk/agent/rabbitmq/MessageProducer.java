@@ -17,6 +17,40 @@ public class MessageProducer {
 
     @Autowired
     private RabbitTemplate rabbitTemplate;
+    
+    private boolean rabbitMQAvailable = true;
+    
+    /**
+     * 检查RabbitMQ连接是否可用
+     */
+    public boolean isRabbitMQAvailable() {
+        try {
+            // 尝试创建连接并关闭，以检查RabbitMQ是否可用
+            if (rabbitTemplate != null && rabbitTemplate.getConnectionFactory() != null) {
+                var connection = rabbitTemplate.getConnectionFactory().createConnection();
+                if (connection != null && connection.isOpen()) {
+                    connection.close();
+                    rabbitMQAvailable = true;
+                    log.debug("RabbitMQ连接可用");
+                    return true;
+                }
+            }
+            log.warn("RabbitMQ连接不可用");
+            rabbitMQAvailable = false;
+            return false;
+        } catch (Exception e) {
+            log.warn("RabbitMQ连接不可用: {}", e.getMessage());
+            rabbitMQAvailable = false;
+            return false;
+        }
+    }
+    
+    /**
+     * 获取RabbitMQ连接状态
+     */
+    public boolean getRabbitMQAvailable() {
+        return rabbitMQAvailable;
+    }
 
     /**
      * 发送聊天消息

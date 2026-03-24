@@ -57,12 +57,8 @@ public class SimpleAgent extends AbstractAgent {
                 optionsBuilder.temperature(temperature);
                 log.info("使用温度参数: {}", temperature);
             }
-            
-            response = chatClient.prompt()
-                .user(task.getTaskContent())
-                .options(optionsBuilder.build())
-                .call()
-                .content();
+
+            response = chatClientCall(optionsBuilder.build(), task.getTaskContent());
             
             log.info("任务执行成功，响应长度: {}", response.length());
             return new AgentResult(response, true);
@@ -111,6 +107,9 @@ public class SimpleAgent extends AbstractAgent {
     }
 
     private String chatClientCall(OpenAiChatOptions options, String message) {
+        if (chatModel == null) {
+            throw new IllegalStateException("chatModel未初始化，请确保AgentConfig中设置了modelConfigId");
+        }
         return ChatClient.builder(chatModel)
                 .defaultAdvisors(
                         MessageChatMemoryAdvisor.builder(chatMemory).build(),

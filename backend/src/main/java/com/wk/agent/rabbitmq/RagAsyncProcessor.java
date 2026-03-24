@@ -5,6 +5,7 @@ import com.wk.agent.mapper.RagChunkMapper;
 import com.wk.agent.rabbitmq.dto.RagProcessingProgress;
 import com.wk.agent.rabbitmq.dto.RagProcessingTask;
 import com.wk.agent.service.RagKnowledgeBaseService;
+import com.wk.agent.service.RagProgressService;
 import com.wk.agent.service.rag.DocumentChunkingService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.document.Document;
@@ -34,6 +35,9 @@ public class RagAsyncProcessor {
 
     @Autowired
     private RagChunkMapper ragChunkMapper;
+
+    @Autowired
+    private RagProgressService progressService;
 
     @Autowired(required = false)
     private RagKnowledgeBaseService knowledgeBaseService;
@@ -82,7 +86,7 @@ public class RagAsyncProcessor {
                 metadata.put("documentId", documentId);
                 metadata.put("chunkIndex", chunk.chunkIndex);
                 metadata.put("headingPath", chunk.headingPath != null ? chunk.headingPath : "");
-                metadata.put("ragNamespace", task.getRagNamespace());
+                metadata.put("ragNamespace", task.getRagNamespace() != null ? task.getRagNamespace() : "default");
                 metadata.put("sourcePath", task.getSourcePath() != null ? task.getSourcePath() : "uploaded");
 
                 Document doc = new Document(vectorId, chunk.content, metadata);
@@ -96,7 +100,7 @@ public class RagAsyncProcessor {
                 ragChunk.setStartOffset(chunk.startOffset);
                 ragChunk.setEndOffset(chunk.endOffset);
                 ragChunk.setTokenCount(chunk.tokenCount);
-                ragChunk.setRagNamespace(task.getRagNamespace());
+                ragChunk.setRagNamespace(task.getRagNamespace() != null ? task.getRagNamespace() : "default");
                 ragChunk.setSourcePath(task.getSourcePath() != null ? task.getSourcePath() : "uploaded");
                 ragChunk.setCreatedAt(LocalDateTime.now());
                 ragChunk.setUpdatedAt(LocalDateTime.now());
@@ -148,7 +152,9 @@ public class RagAsyncProcessor {
             .errorMessage(errorMessage)
             .timestamp(System.currentTimeMillis())
             .build();
-        messageProducer.sendRagProgress(progressObj);
+        // 直接更新进度，绕过RabbitMQ
+        progressService.saveProgress(progressObj);
+        log.debug("进度已更新: taskId={}, status={}, progress={}", taskId, status, progress);
     }
 
     private void saveVectorIds(String documentId, List<String> vectorIds) {
